@@ -1,12 +1,12 @@
 import time
-import openai
+from openai import OpenAI
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 from config import config
 
-openai.api_key = config['interview_helper_key']
+client = OpenAI(api_key=config['api_key'])
 
 chrome_options = Options()
 chrome_options.add_argument("--user-data-dir=/Users/alexandrgrigoriev/Library/Application\\ Support/Google/Chrome")
@@ -36,8 +36,8 @@ def get_otter_transcription():
 # Function to send the text to OpenAI GPT and get a response
 def get_gpt_response(question):
     try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
+        response = client.completions.create(
+            model="gpt-4o-mini",
             prompt=question,
             max_tokens=150,
             temperature=0.5,
@@ -47,7 +47,6 @@ def get_gpt_response(question):
         print(f"Error querying GPT: {e}")
         return None
 
-# Monitor Otter.ai and respond using GPT
 if __name__ == "__main__":
     while True:
         transcription = get_otter_transcription()
