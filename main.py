@@ -1,15 +1,19 @@
 import time
-from openai import OpenAI
+import openai
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
-from config import config # 
+from config import config 
 
-client = OpenAI(api_key=config['api_key'])
+openai.api_key = config['api_key']
 
 chrome_options = Options()
-chrome_options.add_argument("--user-data-dir=/Users/alexandrgrigoriev/Library/Application\\ Support/Google/Chrome")
+#macOS
+# chrome_options.add_argument("--user-data-dir=/Users/alexandrgrigoriev/Library/Application\\ Support/Google/Chrome")
+#Windows
+chrome_options.add_argument("--user-data-dir=C:\\Users\\Maut\\AppData\\Local\\Google\\Chrome")
+
 chrome_options.add_argument("--profile-directory=Profile 1")  # Use the correct profile name
 chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
 chrome_options.add_argument("--disable-gpu")
@@ -36,13 +40,16 @@ def get_otter_transcription():
 # Function to send the text to OpenAI GPT and get a response
 def get_gpt_response(question):
     try:
-        response = client.completions.create(
-            model="gpt-4o-mini",
-            prompt=question,
-            max_tokens=150,
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # Specify the model (e.g., gpt-4)
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": question}
+            ],
+            max_tokens=100,
             temperature=0.5,
         )
-        return response.choices[0].text.strip()
+        return response.choices[0].message['content'].strip()
     except Exception as e:
         print(f"Error querying GPT: {e}")
         return None
@@ -59,4 +66,4 @@ if __name__ == "__main__":
                 if gpt_response:
                     print(f"GPT Response: {gpt_response}")
                     # Here, you can add code to display it on a separate screen or save it.
-        time.sleep(10)  # Check every 10 seconds (adjust as needed)
+        time.sleep(60)  
