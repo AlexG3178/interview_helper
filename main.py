@@ -4,7 +4,7 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
-from config import config
+from config import config # 
 
 client = OpenAI(api_key=config['api_key'])
 
