@@ -71,11 +71,14 @@ def show_question():
 
     answer_text.config(state=tk.DISABLED)
 
+# Add logging inside update_ui to confirm updates
 def update_ui():
     with lock:
-        question_listbox.delete(0, tk.END)
+        print("Updating question listbox with captured questions...")
+        question_listbox.delete(0, tk.END)  # Clear the listbox first
         for question in questions:
-            question_listbox.insert(tk.END, question)
+            question_listbox.insert(tk.END, question)  # Insert each question into the listbox
+            print(f"Added question to listbox: {question}")
         if questions:
             show_question()
 
@@ -91,6 +94,7 @@ def fetch_answer_in_background(question):
     else:
         print(f"Failed to get an answer for: {question}")
 
+# Declare `question_listbox` as global to ensure it's referenced correctly
 def ui_thread():
     global current_question_index, question_listbox, answer_text, root
 
@@ -113,7 +117,7 @@ def ui_thread():
     paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
     paned_window.pack(fill=tk.BOTH, expand=True)
 
-    left_frame = tk.Frame(paned_window, width=200)
+    left_frame = tk.Frame(paned_window, width=300)  # Updated width to 300px
     paned_window.add(left_frame)
 
     right_frame = tk.Frame(paned_window)
@@ -138,6 +142,7 @@ def ui_thread():
     root.after(1000, update_ui)  
     root.mainloop()
 
+# Immediately call `update_ui()` after adding a new question
 def capture_transcription():
     global current_question_index
 
@@ -150,9 +155,12 @@ def capture_transcription():
                 print("Question detected, sending to GPT...")
 
                 with lock:
-                    # Treat each instance of the question uniquely by appending it to the list
+                    # Add each captured question to the list to appear in the "Captured Questions" field
                     questions.append(transcription)
                     current_question_index = len(questions) - 1
+
+                # Call update_ui immediately after adding a question
+                root.after(0, update_ui)  
 
                 threading.Thread(target=fetch_answer_in_background, args=(transcription,)).start()
             else:
