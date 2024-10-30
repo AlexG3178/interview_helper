@@ -2,22 +2,44 @@ import tkinter as tk
 from tkinter import ttk
 
 class InterviewAssistantUI:
-    def __init__(self, root, on_question_select, previous_question, next_question):
+    def __init__(self, root, on_question_select, start_recording):
         self.root = root
         self.root.title("Interview Assistant")
-        self.root.geometry("600x500")
+        self.root.geometry("1000x800")
 
         self.on_question_select = on_question_select
-        self.previous_question = previous_question
-        self.next_question = next_question
+        self.start_recording = start_recording
 
         self.setup_ui()
 
     def setup_ui(self):
+        # Top section for recording options
+        top_frame = tk.Frame(self.root)
+        top_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # Options for recording method
+        self.recording_mode = tk.StringVar(value="system_audio")
+        tk.Radiobutton(top_frame, text="Record System Audio", variable=self.recording_mode, value="system_audio").pack(side=tk.LEFT)
+        tk.Radiobutton(top_frame, text="Connect to Meeting to Record Audio", variable=self.recording_mode, value="meeting_audio").pack(side=tk.LEFT)
+
+        # Meeting URL entry with placeholder
+        self.url_entry = tk.Entry(top_frame, width=40, fg="light gray")
+        self.url_entry.insert(0, "Paste meeting URL to record")
+        self.url_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Bind events to handle placeholder behavior
+        self.url_entry.bind("<FocusIn>", self.clear_placeholder)
+        self.url_entry.bind("<FocusOut>", self.add_placeholder)
+
+        # Record button
+        record_button = tk.Button(top_frame, text="Record", command=self.start_recording)
+        record_button.pack(side=tk.LEFT)
+
         # Paned window layout
         paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         paned_window.pack(fill=tk.BOTH, expand=True)
 
+        # Left frame for questions
         left_frame = tk.Frame(paned_window, width=300)
         right_frame = tk.Frame(paned_window)
         
@@ -31,43 +53,25 @@ class InterviewAssistantUI:
         self.question_listbox.pack(fill=tk.BOTH, expand=True)
         self.question_listbox.bind("<<ListboxSelect>>", self.on_question_select)
 
-        # Navigation buttons
-        button_frame = tk.Frame(left_frame)
-        button_frame.pack(fill=tk.X)
-        prev_button = tk.Button(button_frame, text="Previous", command=self.previous_question)
-        next_button = tk.Button(button_frame, text="Next", command=self.next_question)
-        prev_button.pack(side=tk.LEFT, padx=5, pady=5)
-        next_button.pack(side=tk.LEFT, padx=5, pady=5)
-
-        # Answer text area with scrollbar
-        self.answer_text = tk.Text(right_frame, wrap="word", state=tk.DISABLED)
+        # Answer display (right frame)
+        self.answer_text = tk.Text(right_frame, wrap=tk.WORD)
         self.answer_text.pack(fill=tk.BOTH, expand=True)
-        answer_scrollbar = ttk.Scrollbar(right_frame, command=self.answer_text.yview)
-        self.answer_text.config(yscrollcommand=answer_scrollbar.set)
-        answer_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def update_question_list(self, questions, current_question_index, auto_scroll):
+    def clear_placeholder(self, event):
+        if self.url_entry.get() == "Paste meeting URL to record":
+            self.url_entry.delete(0, tk.END)
+            self.url_entry.config(fg="black")
+
+    def add_placeholder(self, event):
+        if not self.url_entry.get():
+            self.url_entry.insert(0, "Paste meeting URL to record")
+            self.url_entry.config(fg="light gray")
+
+    def populate_questions(self, questions):
         self.question_listbox.delete(0, tk.END)
         for question in questions:
             self.question_listbox.insert(tk.END, question)
 
-        if auto_scroll:
-            self.question_listbox.selection_clear(0, tk.END)
-            self.question_listbox.selection_set(current_question_index)
-            self.question_listbox.activate(current_question_index)
-            self.question_listbox.yview_moveto(1.0)
-    
-    def update_answer_text(self, answers, current_question_index, auto_scroll):
-        self.answer_text.config(state=tk.NORMAL)
+    def display_answer(self, answer):
         self.answer_text.delete(1.0, tk.END)
-
-        for i, answer in enumerate(answers):
-            if i == current_question_index:
-                self.answer_text.insert(tk.END, answer + "\n\n", "highlight")
-                if auto_scroll:
-                    self.answer_text.yview_moveto(1.0)
-            else:
-                self.answer_text.insert(tk.END, answer + "\n\n")
-        
-        self.answer_text.tag_config("highlight", background="yellow")
-        self.answer_text.config(state=tk.DISABLED)
+        self.answer_text.insert(tk.END, answer)

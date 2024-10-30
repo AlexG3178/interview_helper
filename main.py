@@ -3,103 +3,103 @@ from tkinter import ttk
 import threading
 import time
 import openai
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
+import pyaudio
+import tempfile
+import wave
 
-from config import config 
+from config import config
 from ui import InterviewAssistantUI
 
 openai.api_key = config['api_key']
 
-chrome_options = Options()
-#macOS
-# chrome_options.add_argument("--user-data-dir=/Users/alexandrgrigoriev/Library/Application\\ Support/Google/Chrome")
-#Windows
-chrome_options.add_argument("--user-data-dir=C:\\Users\\Maut\\AppData\\Local\\Google\\Chrome")
-chrome_options.add_argument("--profile-directory=Profile 1")  
-chrome_options.add_argument("--disable-dev-shm-usage")  
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--no-sandbox")  
-chrome_options.add_argument("--disable-software-rasterizer")
+# Audio configurations
+CHUNK = 1024
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 44100
 
-driver = uc.Chrome(options=chrome_options)
+class InterviewAssistant:
+    def __init__(self):
+        self.questions = []
+        self.answers = []
+        self.audio = pyaudio.PyAudio()
+        
+        self.root = tk.Tk()
+        self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
+        
+        self.transcribing = False
+        self.recording_mode = "system_audio"
+        self.root.mainloop()
 
-questions = []
-answers = []
-current_question_index = 0
-auto_scroll = True
-lock = threading.Lock()
+    def start_recording(self):
+        print("Start recording function triggered")
+        self.recording_mode = self.ui.recording_mode.get()
+        meeting_url = self.ui.url_entry.get().strip()
 
-def get_otter_transcription():
-    try:
-        driver.get(config['session_url'])
-        time.sleep(5)
-        transcription_elements = driver.find_elements(By.XPATH, config['message_container_path'])
-        combined_text = " ".join([element.text for element in transcription_elements])
-        return combined_text
-    except Exception as e:
-        print(f"Error accessing Otter.ai: {e}")
-        return None
+        if self.recording_mode == "meeting_audio" and meeting_url:
+            print("Connecting to meeting...")
+            # Connect to meeting (implement if needed based on selenium)
+            threading.Thread(target=self.transcribe_meeting, args=(meeting_url,)).start()
+        else:
+            print("Recording system audio...")
+            threading.Thread(target=self.transcribe_system_audio).start()
 
-def get_gpt_response(question):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "system", "content": "You are a helpful assistant."},
-                      {"role": "user", "content": question}],
-            max_tokens=100,
-            temperature=0.5,
-        )
-        return response.choices[0].message['content'].strip()
-    except Exception as e:
-        print(f"Error querying GPT: {e}")
-        return None
+    def transcribe_system_audio(self):
+        print("Starting system audio transcription...")
+        self.transcribing = True
+        stream = self.audio.open(format=FORMAT, channels=CHANNELS,
+                                 rate=RATE, input=True,
+                                 frames_per_buffer=CHUNK)
+        while self.transcribing:
+            # Capture audio frames and combine them
+            frames = [stream.read(CHUNK) for _ in range(0, int(RATE / CHUNK * 2))]
+            audio_data = b''.join(frames)
 
-def on_question_select(event):
-    global current_question_index, auto_scroll
-    selection = app_ui.question_listbox.curselection()
-    if selection:
-        current_question_index = selection[0]
-        auto_scroll = (current_question_index == len(questions) - 1)
-        update_ui()
+            # Save audio data to a temporary file
+            with tempfile.NamedTemporaryFile(delete=True, suffix=".wav") as temp_audio_file:
+                with wave.open(temp_audio_file, 'wb') as wf:
+                    wf.setnchannels(CHANNELS)
+                    wf.setsampwidth(self.audio.get_sample_size(FORMAT))
+                    wf.setframerate(RATE)
+                    wf.writeframes(audio_data)
 
-def previous_question():
-    global current_question_index
-    if current_question_index > 0:
-        current_question_index -= 1
-        update_ui()
+                # Transcribe the audio file using the Whisper API
+                temp_audio_file.seek(0)  # Move to the beginning of the file
+                transcription = self.transcribe_audio(temp_audio_file)
 
-def next_question():
-    global current_question_index
-    if current_question_index < len(questions) - 1:
-        current_question_index += 1
-        update_ui()
+            if transcription:
+                self.add_transcription_to_list(transcription)
 
-def update_ui():
-    app_ui.update_question_list(questions, current_question_index, auto_scroll)
-    app_ui.update_answer_text(answers, current_question_index, auto_scroll)
+        stream.stop_stream()
+        stream.close()
 
-def fetch_answer_in_background(question):
-    answer = get_gpt_response(question)
-    if answer:
-        with lock:
-            answers.append(answer)
-        app_ui.root.after(0, update_ui)
+    def add_transcription_to_list(self, transcription):
+        """Adds each transcription result to the left listbox as a new item."""
+        self.questions.append(transcription)
+        self.ui.populate_questions(self.questions)
 
-def capture_transcription():
-    global current_question_index
-    while True:
-        transcription = get_otter_transcription()
-        if transcription and "?" in transcription:
-            with lock:
-                questions.append(transcription)
-                current_question_index = len(questions) - 1
-            app_ui.root.after(0, update_ui)
-            threading.Thread(target=fetch_answer_in_background, args=(transcription,)).start()
-        time.sleep(config['sleep_time'])
+    def transcribe_meeting(self, meeting_url):
+        # Placeholder for capturing audio from Google Meet
+        print("Meeting transcription not yet implemented")
 
-root = tk.Tk()
-app_ui = InterviewAssistantUI(root, on_question_select, previous_question, next_question)
-threading.Thread(target=capture_transcription, daemon=True).start()
-root.mainloop()
+    def transcribe_audio(self, file_obj):
+        """Send audio file to OpenAI Whisper API for transcription."""
+        try:
+          response = openai.Audio.transcribe("whisper-1", file_obj)
+          return response.get("text", "")
+        except Exception as e:
+          print(f"Transcription error: {e}")
+        return ""
+
+    def on_question_select(self, event):
+        selected_question_index = self.ui.question_listbox.curselection()
+        if selected_question_index:
+            index = selected_question_index[0]
+            answer = self.answers[index] if index < len(self.answers) else ""
+            self.ui.display_answer(answer)
+            
+def main():
+    InterviewAssistant()
+
+if __name__ == "__main__":
+    main()

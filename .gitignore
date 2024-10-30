@@ -2,3 +2,4 @@
 .vscode
 config
 __pycache__
+test.py
