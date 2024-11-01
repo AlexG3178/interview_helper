@@ -13,10 +13,10 @@ from ui import InterviewAssistantUI
 openai.api_key = config['api_key']
 
 # Audio configurations
-CHUNK = 1024
+CHUNK = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 44100
+RATE = 16000
 
 class InterviewAssistant:
     def __init__(self):
@@ -52,7 +52,10 @@ class InterviewAssistant:
                                  frames_per_buffer=CHUNK)
         while self.transcribing:
             # Capture audio frames and combine them
-            frames = [stream.read(CHUNK) for _ in range(0, int(RATE / CHUNK * 2))]
+            try:
+                frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
+            except OSError as e:
+                print(f"Audio input overflowed: {e}")
             audio_data = b''.join(frames)
 
             # Save audio data to a temporary file
