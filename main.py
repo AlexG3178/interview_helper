@@ -6,7 +6,9 @@ import openai
 import pyaudio
 import tempfile
 import wave
-import numpy as np  # Added for amplitude-based silence detection
+import numpy as np
+from selenium import webdriver
+from selenium.webdriver.common.by import By
 
 from config import config
 from ui import InterviewAssistantUI
@@ -21,8 +23,9 @@ RATE = 16000
 
 class InterviewAssistant:
     # Silence threshold for background noise filtering
-    SILENCE_THRESHOLD = 20  # Adjust this based on environment
-
+    SYSTEM_SILENCE_THRESHOLD  = 20  
+    MEETING_SILENCE_THRESHOLD = 25
+    
     def __init__(self):
         self.questions = []
         self.answers = []
@@ -42,7 +45,6 @@ class InterviewAssistant:
 
         if self.recording_mode == "meeting_audio" and meeting_url:
             print("Connecting to meeting...")
-            # Connect to meeting (implement if needed based on selenium)
             threading.Thread(target=self.transcribe_meeting, args=(meeting_url,)).start()
         else:
             print("Recording system audio...")
@@ -57,12 +59,13 @@ class InterviewAssistant:
             print(f"Audio input overflowed: {e}")
             return None
 
-    def is_silent(self, audio_data):
-        """Check if the audio data is silent based on the amplitude."""
+    def is_silent(self, audio_data, threshold=None):
+        """Check if the audio data is silent based on the amplitude and given threshold."""
+        threshold = threshold if threshold is not None else self.SYSTEM_SILENCE_THRESHOLD
         if audio_data:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
             rms = np.sqrt(np.mean(amplitude**2))
-            return rms < self.SILENCE_THRESHOLD
+            return rms < threshold
         return True
 
     def transcribe_system_audio(self):
@@ -102,8 +105,66 @@ class InterviewAssistant:
         self.ui.populate_questions(self.questions)
 
     def transcribe_meeting(self, meeting_url):
-        # Placeholder for capturing audio from Google Meet
-        print("Meeting transcription not yet implemented")
+        """Captures audio from a Google Meet session and transcribes it."""
+        print("Joining Google Meet session...")
+        options = webdriver.ChromeOptions()
+        options.add_argument("--use-fake-ui-for-media-stream")  # Automatically allow mic permissions
+        driver = webdriver.Chrome(config['chromedriver_path'], options=options)
+
+        try:
+            driver.get(meeting_url)
+            time.sleep(5)  # Wait for the page to load
+
+            # Find and click the 'Join' button (modify the XPath if necessary)
+            join_button = driver.find_element(By.XPATH, "//span[contains(text(), 'Join now') or contains(text(), 'Ask to join')]")
+            join_button.click()
+            print("Joined the meeting")
+
+            # Start audio capture for transcription
+            self.transcribing = True
+            audio_thread = threading.Thread(target=self.transcribe_audio_loopback)
+            audio_thread.start()
+
+            # Keep the browser open as long as transcription is running
+            while self.transcribing:
+                time.sleep(1)
+
+        except Exception as e:
+            print(f"Error in meeting transcription: {e}")
+        finally:
+            driver.quit()
+
+    def transcribe_audio_loopback(self):
+        """Capture audio from the system loopback and transcribe."""
+        stream = self.audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+        print("Starting loopback audio transcription...")
+
+        while self.transcribing:
+            try:
+                frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
+            except OSError as e:
+                print(f"Audio input overflowed: {e}")
+                continue
+
+            audio_data = b''.join(frames)
+            if not self.is_silent(audio_data, self.MEETING_SILENCE_THRESHOLD):
+                with tempfile.NamedTemporaryFile(delete=True, suffix=".wav") as temp_audio_file:
+                    with wave.open(temp_audio_file, 'wb') as wf:
+                        wf.setnchannels(CHANNELS)
+                        wf.setsampwidth(self.audio.get_sample_size(FORMAT))
+                        wf.setframerate(RATE)
+                        wf.writeframes(audio_data)
+
+                    # Send the audio file to Whisper API for transcription
+                    temp_audio_file.seek(0)
+                    transcription = self.transcribe_audio(temp_audio_file)
+                
+                if transcription:
+                    self.add_transcription_to_list(transcription)
+
+        stream.stop_stream()
+        stream.close()
+        print("Loopback audio transcription stopped.")
 
     def transcribe_audio(self, file_obj):
         """Send audio file to OpenAI Whisper API for transcription."""
