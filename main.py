@@ -3,20 +3,14 @@ import wave
 import time
 import openai
 import pyaudio
+import platform
 import tempfile
 import threading
 import numpy as np
 import tkinter as tk
 from tkinter import ttk
 import assemblyai as aai
-from selenium import webdriver
-import undetected_chromedriver as uc
 from assemblyai import Transcriber
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
- 
 from config import config
 from ui import InterviewAssistantUI
 
@@ -28,7 +22,7 @@ aai.settings.api_key = config['api_key_assemblyai']
 CHUNK = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 16000
+RATE = 48000  # Match Voicemeeter's sample rate
 
 # Custom directory for temporary files
 CUSTOM_TEMP_DIR = "C:\\custom_temp"
@@ -36,8 +30,8 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
 class InterviewAssistant:
-    SYSTEM_SILENCE_THRESHOLD = 20
-    MEETING_SILENCE_THRESHOLD = 20
+    SYSTEM_SILENCE_THRESHOLD = 1  # Adjusted for Voicemeeter and VB-Audio
+    MEETING_SILENCE_THRESHOLD = 1
 
     def __init__(self):
         self.questions = []
@@ -48,7 +42,6 @@ class InterviewAssistant:
         self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
 
         self.transcribing = False
-        self.transcriber = None
         self.recording_mode = "system_audio"
 
         self.root.mainloop()
@@ -66,11 +59,50 @@ class InterviewAssistant:
             print("Recording system audio...")
             threading.Thread(target=self.transcribe_system_audio).start()
 
+    def transcribe_meeting(self, meeting_url):
+        print(f"Connecting to meeting URL: {meeting_url}")
+        self.transcribing = True
+
+        # Open PyAudio stream for VB-Audio Cable
+        stream = self.audio.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            input_device_index=self.get_device_index(),  
+            frames_per_buffer=CHUNK
+        )
+
+        print("Starting transcription of meeting audio...")
+        while self.transcribing:
+            audio_data = self.capture_audio(stream)
+            if audio_data:
+                print("Captured audio data.")
+                if not self.is_silent(audio_data, self.MEETING_SILENCE_THRESHOLD):
+                    self.save_and_transcribe(audio_data)
+                else:
+                    print("Silence detected in meeting audio, skipping transcription.")
+            else:
+                print("No audio data captured.")
+
+        stream.stop_stream()
+        stream.close()
+        print("Meeting transcription stopped.")
+
     def transcribe_system_audio(self):
         """Start transcription of system audio using file-based transcription."""
         print("Starting system audio transcription...")
         self.transcribing = True
-        stream = self.audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+        # Open PyAudio stream for VB-Audio Cable
+        stream = self.audio.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            input_device_index=self.get_device_index(),  
+            frames_per_buffer=CHUNK
+        )
 
         while self.transcribing:
             audio_data = self.capture_audio(stream)
@@ -84,8 +116,7 @@ class InterviewAssistant:
 
     def save_and_transcribe(self, audio_data):
         """Save audio data to a temporary file and transcribe it."""
-        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".wav")  # Custom temp directory
-        # print(f"Created temporary file: {temp_audio_file.name}")
+        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".wav")
         try:
             with wave.open(temp_audio_file.name, 'wb') as wf:
                 wf.setnchannels(CHANNELS)
@@ -104,11 +135,9 @@ class InterviewAssistant:
         except Exception as e:
             print(f"Transcription error: {e}")
         finally:
-            # Explicitly delete the file after use
             try:
                 temp_audio_file.close()
-                os.unlink(temp_audio_file.name)  # Cleanup temp file
-                # print(f"Deleted temporary file: {temp_audio_file.name}")
+                os.unlink(temp_audio_file.name)
             except Exception as cleanup_error:
                 print(f"Error cleaning up temporary file: {cleanup_error}")
 
@@ -127,67 +156,20 @@ class InterviewAssistant:
         if audio_data:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
             rms = np.sqrt(np.mean(amplitude**2))
+            print(f"RMS Value: {rms}, Threshold: {threshold}")
             return rms < threshold
         return True
 
     def transcribe_audio_file(self, audio_file_path):
         """Transcribes an audio file using AssemblyAI's file-based API."""
         try:
-            transcriber = Transcriber()  # AssemblyAI file-based transcription
+            transcriber = Transcriber()
             transcript = transcriber.transcribe(audio_file_path)
             print("Full Transcript:", transcript.text)
             return transcript.text
         except Exception as e:
             print(f"Transcription error: {e}")
             return f"Error: {e}"
-        
-    def transcribe_meeting(self, meeting_url):
-        """Capture audio from a Google Meet session and transcribe."""
-        print("Joining Google Meet session...")
-
-        # Initialize undetected Chrome
-        options = uc.ChromeOptions()
-        options.add_argument("--use-fake-ui-for-media-stream")  # Automatically allow mic permissions
-        options.add_argument("C:\\Users\\Maut\\AppData\\Local\\Google\\Chrome\\User Data")  # Keep logged in session
-
-        driver = uc.Chrome(options=options)  # Initialize undetected ChromeDriver
-
-        try:
-            driver.get(meeting_url)
-            # Wait for the "Join" button to appear
-            wait = WebDriverWait(driver, 60)
-            join_button = wait.until(EC.element_to_be_clickable(
-                (By.XPATH, "//span[contains(text(), 'Join now') or contains(text(), 'Ask to join')]")
-            ))
-            join_button.click()
-            print("Joined the meeting")
-
-            self.transcribing = True
-            threading.Thread(target=self.transcribe_audio_loopback).start()
-
-            while self.transcribing:
-                time.sleep(1)
-        except Exception as e:
-            print(f"Error in meeting transcription: {e}")
-        finally:
-            driver.quit()
-            
-
-    def transcribe_audio_loopback(self):
-        """Capture audio from system loopback and transcribe."""
-        stream = self.audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-        print("Starting loopback audio transcription...")
-
-        while self.transcribing:
-            audio_data = self.capture_audio(stream)
-            if audio_data and not self.is_silent(audio_data, self.MEETING_SILENCE_THRESHOLD):
-                self.save_and_transcribe(audio_data)
-            else:
-                print("Silence detected.")
-
-        stream.stop_stream()
-        stream.close()
-        print("Loopback audio transcription stopped.")
 
     def generate_answer(self, question):
         """Generate an answer using OpenAI's GPT-4 model."""
@@ -208,6 +190,18 @@ class InterviewAssistant:
             print(f"Error generating answer: {e}")
             self.answers.append("Error generating answer.")
             self.ui.display_answer("Error generating answer.")
+
+    def get_device_index(self, device_name_windows="CABLE Output", device_name_mac="BlackHole"):
+        """Get the device index for the specified device name based on the OS."""
+        target_device_name = device_name_windows if platform.system() == "Windows" else device_name_mac
+
+        for i in range(self.audio.get_device_count()):
+            info = self.audio.get_device_info_by_index(i)
+            if target_device_name in info.get("name", ""):
+                print(f"Found device '{target_device_name}' at index {i}")
+                return i
+
+        raise ValueError(f"Device '{target_device_name}' not found")
 
     def on_question_select(self, event):
         """Handle selection of a question from the UI."""
