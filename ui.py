@@ -6,21 +6,16 @@ class InterviewAssistantUI:
         self.root = root
         self.root.title("Interview Assistant")
         self.root.geometry("1000x800")
-
         self.on_question_select = on_question_select
         self.start_recording = start_recording
-
+        self.is_recording = False
+        self.record_button = None
         self.setup_ui()
 
     def setup_ui(self):
         # Top section for recording options
         top_frame = tk.Frame(self.root)
         top_frame.pack(fill=tk.X, padx=10, pady=5)
-
-        # Options for recording method
-        self.recording_mode = tk.StringVar(value="system_audio")
-        tk.Radiobutton(top_frame, text="Record System Audio", variable=self.recording_mode, value="system_audio").pack(side=tk.LEFT)
-        tk.Radiobutton(top_frame, text="Connect to Meeting to Record Audio", variable=self.recording_mode, value="meeting_audio").pack(side=tk.LEFT)
 
         # Meeting URL entry with placeholder
         self.url_entry = tk.Entry(top_frame, width=40, fg="light gray")
@@ -32,8 +27,14 @@ class InterviewAssistantUI:
         self.url_entry.bind("<FocusOut>", self.add_placeholder)
 
         # Record button
-        record_button = tk.Button(top_frame, text="Record", command=self.start_recording)
-        record_button.pack(side=tk.LEFT)
+        self.record_button = tk.Button(
+            top_frame, 
+            text="Record", 
+            command=self.toggle_recording, 
+            bg="green", 
+            fg="white"
+        )
+        self.record_button.pack(side=tk.LEFT)
 
         # Paned window layout
         paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
@@ -66,6 +67,16 @@ class InterviewAssistantUI:
         if not self.url_entry.get():
             self.url_entry.insert(0, "Paste meeting URL to record")
             self.url_entry.config(fg="light gray")
+            
+    def toggle_recording(self):
+        self.is_recording = not self.is_recording
+
+        if self.is_recording:
+            self.record_button.config(text="Stop", bg="red")
+            self.start_recording(True)    
+        else:
+            self.record_button.config(text="Record", bg="green")
+            self.start_recording(False)
 
     def populate_questions(self, questions):
         self.question_listbox.delete(0, tk.END)

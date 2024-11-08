@@ -30,8 +30,8 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
 class InterviewAssistant:
-    SYSTEM_SILENCE_THRESHOLD = 1  # Adjusted for Voicemeeter and VB-Audio
-    MEETING_SILENCE_THRESHOLD = 1
+    SYSTEM_SILENCE_THRESHOLD = 20  # Adjusted for Voicemeeter and VB-Audio
+    MEETING_SILENCE_THRESHOLD = 20
 
     def __init__(self):
         self.questions = []
@@ -46,18 +46,25 @@ class InterviewAssistant:
 
         self.root.mainloop()
 
-    def start_recording(self):
-        """Handle UI button press to start recording."""
-        print("Start recording function triggered")
-        self.recording_mode = self.ui.recording_mode.get()
-        meeting_url = self.ui.url_entry.get().strip()
+    def start_recording(self, start=True):
+        if start:
+            print("Start recording function triggered")
+            self.transcribing = True  # Set transcribing state to True
+            meeting_url = self.ui.url_entry.get().strip()
 
-        if self.recording_mode == "meeting_audio" and meeting_url:
-            print("Connecting to meeting...")
-            threading.Thread(target=self.transcribe_meeting, args=(meeting_url,)).start()
+            if meeting_url:
+                print("Connecting to meeting...")
+                threading.Thread(target=self.transcribe_meeting, args=(meeting_url,)).start()
+            else:
+                print("Recording system audio...")
+                threading.Thread(target=self.transcribe_system_audio).start()
         else:
-            print("Recording system audio...")
-            threading.Thread(target=self.transcribe_system_audio).start()
+            print("Stop recording function triggered")
+            self.stop_recording()  
+
+    def stop_recording(self):
+            print("Stop recording")
+            self.transcribing = False
 
     def transcribe_meeting(self, meeting_url):
         print(f"Connecting to meeting URL: {meeting_url}")
