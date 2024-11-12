@@ -3,5 +3,7 @@ config = {
     'api_key_assemblyai': '7f2905e8b17043f0b8e30629cd7c9bc4',
     'SYSTEM_SILENCE_THRESHOLD': 15,
     'MEETING_SILENCE_THRESHOLD': 15,
-    'sleep_time': 10
+    'CHUNK': 2048,
+    'CHANNELS': 1,
+    'RATE': 48000
 }

@@ -16,10 +16,10 @@ from ui import InterviewAssistantUI
 openai.api_key = config['api_key_openai']
 aai.settings.api_key = config['api_key_assemblyai']
 
-CHUNK = 2048
 FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 48000  # Match Voicemeeter's sample rate
+CHUNK = config['CHUNK']
+CHANNELS = config['CHANNELS']
+RATE = config['RATE'] # Match Voicemeeter's sample rate
 
 CUSTOM_TEMP_DIR = "C:\\custom_temp"
 os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
@@ -191,6 +191,7 @@ class InterviewAssistant:
                 max_tokens=150
             )
             answer = response.choices[0].message['content'].strip()
+            # answer = "Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer ."
             print("Generated Answer:", answer)
 
             # Add the answer and refresh the UI
