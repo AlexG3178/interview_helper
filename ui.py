@@ -39,7 +39,7 @@ class InterviewAssistantUI:
         self.url_entry.pack(side=tk.LEFT, padx=5)
         self.url_entry.insert(0, "Paste meeting URL to record")
 
-        # Bind events to handle placeholder behavior
+        # Bind events
         self.url_entry.bind("<FocusIn>", self.clear_placeholder)
         self.url_entry.bind("<FocusOut>", self.add_placeholder)
 
@@ -75,7 +75,15 @@ class InterviewAssistantUI:
             highlightthickness=0
         )
         self.answer_text.pack(fill=tk.BOTH, expand=True)
- 
+        self.answer_text.bind("<Configure>", lambda event: self.ensure_answer_visibility())
+    
+    
+    def ensure_answer_visibility(self):
+        """Ensure the highlighted answer remains visible during window resizing."""
+        if self.question_listbox.curselection():
+            selected_index = self.question_listbox.curselection()[0]
+            self.answer_text.see(f"{selected_index * 2 + 1}.0")  # Adjust to match line spacing
+
  
     def clear_placeholder(self, event):
         if self.url_entry.get() == "Paste meeting URL to record":
@@ -127,15 +135,32 @@ class InterviewAssistantUI:
  
  
     def highlight_answer(self, selected_index, answers):
-        """Highlight the selected answer in the text widget."""
+        """Highlight the selected answer in the text widget and ensure full visibility."""
         self.answer_text.config(state=tk.NORMAL)  # Temporarily enable editing for updates
         self.answer_text.delete(1.0, tk.END)
+    
+        # Insert all answers and highlight the selected one
         for i, answer in enumerate(answers):
             tag = "highlight" if i == selected_index else None
             self.answer_text.insert(tk.END, f"{answer}\n\n", tag if tag else "normal")
+    
+        # Configure the highlight tag for styling
         self.answer_text.tag_configure("highlight", background="yellow", foreground="black")
         self.answer_text.config(state=tk.DISABLED)  # Disable editing again
-        
+    
+        # Ensure the highlighted answer is fully visible
+        if selected_index is not None:
+            # Calculate start and end lines for the selected answer
+            start_line = selected_index * 2 + 1
+            end_line = start_line + 1  # Include the blank line after the answer
+    
+            # Scroll to ensure both start and end lines are visible
+            self.answer_text.see(f"{start_line}.0")
+            self.answer_text.see(f"{end_line}.0")
+    
+            # Scroll slightly more to ensure padding space for visibility
+            self.answer_text.yview_scroll(-1, "units")  # Scroll up by 1 unit for better visibility
+
     
     def scroll_to_highlight(self):
         if self.is_recording:
