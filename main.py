@@ -13,48 +13,40 @@ from assemblyai import Transcriber
 from config import config
 from ui import InterviewAssistantUI
 
-# API configurations
 openai.api_key = config['api_key_openai']
 aai.settings.api_key = config['api_key_assemblyai']
 
-# Audio configurations
 CHUNK = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 48000  # Match Voicemeeter's sample rate
 
-# Custom directory for temporary files
 CUSTOM_TEMP_DIR = "C:\\custom_temp"
 os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
+
 class InterviewAssistant:
-    SYSTEM_SILENCE_THRESHOLD = 10  # Adjusted for Voicemeeter and VB-Audio
-    MEETING_SILENCE_THRESHOLD = 10
+    SYSTEM_SILENCE_THRESHOLD = config['SYSTEM_SILENCE_THRESHOLD']
+    MEETING_SILENCE_THRESHOLD = config['MEETING_SILENCE_THRESHOLD']
 
  
     def __init__(self):
         self.questions = []
         self.answers = []
         self.audio = pyaudio.PyAudio()
-        self.selected_index = None  # Track the currently selected question
- 
- 
+        self.selected_index = None
         self.root = tk.Tk()
         self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
- 
- 
         self.transcribing = False
         self.recording_mode = "system_audio"
- 
- 
         self.root.mainloop()
  
  
     def start_recording(self, start=True):
         if start:
             print("Start recording function triggered")
-            self.transcribing = True  # Set transcribing state to True
+            self.transcribing = True  
             meeting_url = self.ui.url_entry.get().strip()
  
  
@@ -78,7 +70,6 @@ class InterviewAssistant:
         print(f"Connecting to meeting URL: {meeting_url}")
         self.transcribing = True
  
- 
         stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
@@ -88,12 +79,9 @@ class InterviewAssistant:
             frames_per_buffer=CHUNK
         )
  
- 
-        print("Starting transcription of meeting audio...")
         while self.transcribing:
             audio_data = self.capture_audio(stream)
             if audio_data:
-                print("Captured audio data.")
                 if not self.is_silent(audio_data, self.MEETING_SILENCE_THRESHOLD):
                     self.save_and_transcribe(audio_data)
                 else:
@@ -112,7 +100,6 @@ class InterviewAssistant:
         print("Starting system audio transcription...")
         self.transcribing = True
  
- 
         stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
@@ -122,14 +109,12 @@ class InterviewAssistant:
             frames_per_buffer=CHUNK
         )
  
- 
         while self.transcribing:
             audio_data = self.capture_audio(stream)
             if audio_data and not self.is_silent(audio_data):
                 self.save_and_transcribe(audio_data)
             else:
                 print("Silence detected, skipping transcription.")
- 
  
         stream.stop_stream()
         stream.close()
@@ -144,7 +129,6 @@ class InterviewAssistant:
                 wf.setsampwidth(self.audio.get_sample_size(FORMAT))
                 wf.setframerate(RATE)
                 wf.writeframes(audio_data)
- 
  
             # Transcribe the audio
             transcription = self.transcribe_audio_file(temp_audio_file.name)
@@ -212,9 +196,14 @@ class InterviewAssistant:
             # Add the answer and refresh the UI
             self.answers.append(answer)
 
-            # Ensure the UI scrolls and selects the last question
-            self.selected_index = len(self.questions) - 1
-            self.root.after(0, self.populate_questions_and_answers)  # Thread-safe UI update
+            # Ensure custom selection is respected
+            if self.selected_index is not None and self.selected_index < len(self.questions):
+                # Keep the current selection and do not auto-select the last question
+                self.root.after(0, self.populate_questions_and_answers)
+            else:
+                # Auto-select the last question
+                self.selected_index = len(self.questions) - 1
+                self.root.after(0, self.populate_questions_and_answers)
         except Exception as e:
             print(f"Error generating answer: {e}")
             self.answers.append("Error generating answer.")
@@ -234,22 +223,36 @@ class InterviewAssistant:
         for answer in self.answers:
             self.ui.answer_text.insert(tk.END, f"{answer}\n\n")
 
-        # If the user manually selected a question, respect that selection
-        if self.selected_index is not None and self.selected_index < len(self.questions):
-            self.ui.question_listbox.selection_clear(0, tk.END)
-            self.ui.question_listbox.selection_set(self.selected_index)
-            self.ui.question_listbox.activate(self.selected_index)
-            self.ui.highlight_answer(self.selected_index, self.answers)
-            self.ui.scroll_to_question(self.selected_index)  # Scroll to the selected question
-        else:
-            # Default to selecting the last question
-            self.selected_index = len(self.questions) - 1
-            self.ui.question_listbox.selection_clear(0, tk.END)
-            self.ui.question_listbox.selection_set(self.selected_index)
-            self.ui.question_listbox.activate(self.selected_index)
-            self.ui.highlight_answer(self.selected_index, self.answers)
-            self.ui.scroll_to_end()  # Scroll to the last question
+        # Debugging: Log the state before determining the new selection
+        print(f"[DEBUG] Before Selection Update: Selected Index: {self.selected_index}, Total Questions: {len(self.questions)}")
 
+        # Detect if the last question is currently selected
+        is_last_selected = (
+            self.selected_index is not None
+            and self.selected_index == len(self.questions) - 2  # Check the second-to-last before appending
+        )
+        print(f"[DEBUG] Is Last Selected (before new question): {is_last_selected}")
+
+        # Handle selection logic
+        if is_last_selected:
+            # Move selection to the new last question
+            self.selected_index = len(self.questions) - 1
+        elif self.selected_index is None:
+            # Default to selecting the last question if no selection exists
+            self.selected_index = len(self.questions) - 1
+
+        # Apply the selection to the UI
+        self.ui.question_listbox.selection_clear(0, tk.END)
+        self.ui.question_listbox.selection_set(self.selected_index)
+        self.ui.question_listbox.activate(self.selected_index)
+        self.ui.highlight_answer(self.selected_index, self.answers)
+
+        # Scroll behavior
+        if is_last_selected:
+            self.ui.scroll_to_end()
+        else:
+            self.ui.scroll_to_question(self.selected_index)
+            
 
     def get_device_index(self, device_name_windows="CABLE Output", device_name_mac="BlackHole"):
         target_device_name = device_name_windows if platform.system() == "Windows" else device_name_mac
@@ -265,8 +268,8 @@ class InterviewAssistant:
         """Handle selection of a question from the UI."""
         selected_question_index = self.ui.question_listbox.curselection()
         if selected_question_index:
-            self.selected_index = selected_question_index[0]  # Update the tracked selected index
-            self.ui.highlight_answer(self.selected_index, self.answers)  # Highlight the corresponding answer
+            self.selected_index = selected_question_index[0]
+            self.ui.highlight_answer(self.selected_index, self.answers)
 
 
 def main():

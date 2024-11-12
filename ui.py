@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 
+
 class InterviewAssistantUI:
     def __init__(self, root, on_question_select, start_recording):
         self.root = root
@@ -19,17 +20,14 @@ class InterviewAssistantUI:
         top_frame = tk.Frame(self.root)
         top_frame.pack(fill=tk.X, padx=10, pady=5)
  
- 
         # Meeting URL entry with placeholder
         self.url_entry = tk.Entry(top_frame, width=40, fg="light gray")
         self.url_entry.insert(0, "Paste meeting URL to record")
         self.url_entry.pack(side=tk.LEFT, padx=5)
  
- 
         # Bind events to handle placeholder behavior
         self.url_entry.bind("<FocusIn>", self.clear_placeholder)
         self.url_entry.bind("<FocusOut>", self.add_placeholder)
- 
  
         # Record button
         self.record_button = tk.Button(
@@ -41,28 +39,23 @@ class InterviewAssistantUI:
         )
         self.record_button.pack(side=tk.LEFT)
  
- 
         # Paned window layout
         paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         paned_window.pack(fill=tk.BOTH, expand=True)
  
- 
         # Left frame for questions
         left_frame = tk.Frame(paned_window, width=300)
         right_frame = tk.Frame(paned_window)
- 
  
         # Add frames to paned window
         paned_window.add(left_frame)
         paned_window.add(right_frame)
         paned_window.paneconfig(left_frame, minsize=300)
  
- 
         # Question listbox
         self.question_listbox = tk.Listbox(left_frame)
         self.question_listbox.pack(fill=tk.BOTH, expand=True)
         self.question_listbox.bind("<<ListboxSelect>>", self.on_question_select)
- 
  
         # Answer display (right frame)
         self.answer_text = tk.Text(right_frame, wrap=tk.WORD)
@@ -83,16 +76,15 @@ class InterviewAssistantUI:
  
     def scroll_to_end(self):
         """Scroll both the question list and answer text to the end."""
-        self.question_listbox.yview_moveto(1.0)  # Scroll question listbox to the bottom
-        self.answer_text.yview_moveto(1.0)       # Scroll answer text to the bottom
-    
+        self.question_listbox.yview_moveto(1.0)
+        self.answer_text.yview_moveto(1.0)
+
+
     def scroll_to_question(self, index):
         """Scroll to the specific question in the list."""
-        self.question_listbox.see(index)  # Ensure the selected question is visible
+        self.question_listbox.see(index)
 
 
-    
- 
     def toggle_recording(self):
         self.is_recording = not self.is_recording
         self.root.after(100, self.scroll_to_end)  # Ensure end-scrolling on toggle
@@ -117,14 +109,15 @@ class InterviewAssistantUI:
  
  
     def highlight_answer(self, selected_index, answers):
+        """Highlight the selected answer in the text widget."""
         self.answer_text.delete(1.0, tk.END)
         for i, answer in enumerate(answers):
             tag = "highlight" if i == selected_index else None
             self.answer_text.insert(tk.END, f"{answer}\n\n", tag if tag else "normal")
-
+            
         self.answer_text.tag_configure("highlight", background="yellow", foreground="black")
-        self.scroll_to_highlight()
-
+        self.scroll_to_question(selected_index)
+        
     
     def scroll_to_highlight(self):
         if self.is_recording:
