@@ -29,19 +29,6 @@ class InterviewAssistantUI:
             insertcolor="grey",         # Cursor color
             insertbackground="green"
         )  
-        
-        # Meeting URL entry with placeholder
-        self.url_entry = ttk.Entry(
-            top_frame,
-            width=40,
-            style="Custom.TEntry"
-        )
-        self.url_entry.pack(side=tk.LEFT, padx=5)
-        self.url_entry.insert(0, "Paste meeting URL to record")
-
-        # Bind events
-        self.url_entry.bind("<FocusIn>", self.clear_placeholder)
-        self.url_entry.bind("<FocusOut>", self.add_placeholder)
 
         self.create_record_button(top_frame)
  
@@ -83,18 +70,6 @@ class InterviewAssistantUI:
         if self.question_listbox.curselection():
             selected_index = self.question_listbox.curselection()[0]
             self.answer_text.see(f"{selected_index * 2 + 1}.0")  # Adjust to match line spacing
-
- 
-    def clear_placeholder(self, event):
-        if self.url_entry.get() == "Paste meeting URL to record":
-            self.url_entry.delete(0, tk.END)
-            self.url_entry.config(fg="black")
- 
- 
-    def add_placeholder(self, event):
-        if not self.url_entry.get():
-            self.url_entry.insert(0, "Paste meeting URL to record")
-            self.url_entry.config(fg="light gray")
  
  
     def scroll_to_end(self):
@@ -113,11 +88,9 @@ class InterviewAssistantUI:
 
         if self.is_recording:
             self.record_button.config(text="Stop", bg="red")
-            self.url_entry.config(state=tk.DISABLED)  # Lock the field
             self.start_recording(True)
         else:
             self.record_button.config(text="Record", bg="green")
-            self.url_entry.config(state=tk.NORMAL)  # Unlock the field
             self.start_recording(False)
 
         self.root.after(100, self.scroll_to_end)
@@ -187,11 +160,9 @@ class InterviewAssistantUI:
         """Toggle the state of the custom record button."""
         if self.record_button_state == "record":
             self.record_button_state = "stop"
-            self.url_entry.config(state=tk.DISABLED)  # Lock the field
             self.start_recording(True)
         else:
             self.record_button_state = "record"
-            self.url_entry.config(state=tk.NORMAL)  # Unlock the field
             self.start_recording(False)
 
         self.draw_record_button()

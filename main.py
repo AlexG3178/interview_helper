@@ -27,9 +27,7 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
 class InterviewAssistant:
-    SYSTEM_SILENCE_THRESHOLD = config['SYSTEM_SILENCE_THRESHOLD']
-    MEETING_SILENCE_THRESHOLD = config['MEETING_SILENCE_THRESHOLD']
-
+    SILENCE_THRESHOLD = config['SILENCE_THRESHOLD']
  
     def __init__(self):
         self.questions = []
@@ -46,16 +44,8 @@ class InterviewAssistant:
     def start_recording(self, start=True):
         if start:
             print("Start recording function triggered")
-            self.transcribing = True  
-            meeting_url = self.ui.url_entry.get().strip()
- 
- 
-            if meeting_url:
-                print("Connecting to meeting...")
-                threading.Thread(target=self.transcribe_meeting, args=(meeting_url,)).start()
-            else:
-                print("Recording system audio...")
-                threading.Thread(target=self.transcribe_system_audio).start()
+            self.transcribing = True   
+            threading.Thread(target=self.transcribe_meeting).start()
         else:
             print("Stop recording function triggered")
             self.stop_recording()
@@ -66,8 +56,7 @@ class InterviewAssistant:
         self.transcribing = False
  
  
-    def transcribe_meeting(self, meeting_url):
-        print(f"Connecting to meeting URL: {meeting_url}")
+    def transcribe_meeting(self):
         self.transcribing = True
  
         stream = self.audio.open(
@@ -82,7 +71,7 @@ class InterviewAssistant:
         while self.transcribing:
             audio_data = self.capture_audio(stream)
             if audio_data:
-                if not self.is_silent(audio_data, self.MEETING_SILENCE_THRESHOLD):
+                if not self.is_silent(audio_data, self.SILENCE_THRESHOLD):
                     self.save_and_transcribe(audio_data)
                 else:
                     print("Silence detected in meeting audio, skipping transcription.")
@@ -94,31 +83,6 @@ class InterviewAssistant:
         stream.close()
         print("Meeting transcription stopped.")
 
-
-    def transcribe_system_audio(self):
-        """Start transcription of system audio using file-based transcription."""
-        print("Starting system audio transcription...")
-        self.transcribing = True
- 
-        stream = self.audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            input_device_index=self.get_device_index(),
-            frames_per_buffer=CHUNK
-        )
- 
-        while self.transcribing:
-            audio_data = self.capture_audio(stream)
-            if audio_data and not self.is_silent(audio_data):
-                self.save_and_transcribe(audio_data)
-            else:
-                print("Silence detected, skipping transcription.")
- 
-        stream.stop_stream()
-        stream.close()
- 
 
     def save_and_transcribe(self, audio_data):
         """Save audio data to a temporary file and transcribe it."""
@@ -158,7 +122,6 @@ class InterviewAssistant:
 
     def is_silent(self, audio_data, threshold=None):
         """Check if the audio data is silent based on amplitude and threshold."""
-        threshold = threshold if threshold is not None else self.SYSTEM_SILENCE_THRESHOLD
         if audio_data:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
             rms = np.sqrt(np.mean(amplitude**2))
@@ -182,17 +145,16 @@ class InterviewAssistant:
     def generate_answer(self, question):
         """Generate an answer using OpenAI's GPT-4 model."""
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": f"Answer the following question concisely: {question}"}
-                ],
-                max_tokens=150
-            )
-            answer = response.choices[0].message['content'].strip()
-            # answer = "Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer ."
-            print("Generated Answer:", answer)
+            # response = openai.ChatCompletion.create(
+            #     model="gpt-4",
+            #     messages=[
+            #         {"role": "system", "content": "You are a helpful assistant."},
+            #         {"role": "user", "content": f"Answer the following question concisely: {question}"}
+            #     ],
+            #     max_tokens=150
+            # )
+            # answer = response.choices[0].message['content'].strip()
+            answer = "Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer Mock answer ."
 
             # Add the answer and refresh the UI
             self.answers.append(answer)
@@ -224,15 +186,11 @@ class InterviewAssistant:
         for answer in self.answers:
             self.ui.answer_text.insert(tk.END, f"{answer}\n\n")
 
-        # Debugging: Log the state before determining the new selection
-        print(f"[DEBUG] Before Selection Update: Selected Index: {self.selected_index}, Total Questions: {len(self.questions)}")
-
         # Detect if the last question is currently selected
         is_last_selected = (
             self.selected_index is not None
             and self.selected_index == len(self.questions) - 2  # Check the second-to-last before appending
         )
-        print(f"[DEBUG] Is Last Selected (before new question): {is_last_selected}")
 
         # Handle selection logic
         if is_last_selected:
