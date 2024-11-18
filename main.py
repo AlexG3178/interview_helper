@@ -1,20 +1,19 @@
 import os
+import io
 import openai
 import pyaudio
 import platform
 import tempfile
 import threading
+import logging
 import numpy as np
 import tkinter as tk
-from tkinter import ttk
-import assemblyai as aai
+from google.cloud import speech
 from pydub import AudioSegment, effects
-from assemblyai import Transcriber
 from config import config
 from ui import InterviewAssistantUI
 
 openai.api_key = config['api_key_openai']
-aai.settings.api_key = config['api_key_assemblyai']
 
 FORMAT = pyaudio.paInt16
 CHUNK = config['CHUNK']
@@ -38,16 +37,18 @@ class InterviewAssistant:
         self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
         self.transcribing = False
         self.recording_mode = "system_audio"
+         # Google Cloud Speech client setup
+        self.speech_client = speech.SpeechClient.from_service_account_json(config['google_service_account_key'])
         self.root.mainloop()
  
  
     def start_recording(self, start=True):
         if start:
-            print("Start recording function triggered")
+            print("Start logging")
             self.transcribing = True   
             threading.Thread(target=self.transcribe_meeting).start()
         else:
-            print("Stop recording function triggered")
+            print("Recording stopped")
             self.stop_recording()
  
  
@@ -94,7 +95,7 @@ class InterviewAssistant:
                 frame_rate=RATE,
                 channels=CHANNELS
             )
-            audio_segment.export(temp_audio_file.name, format="mp3")
+            audio_segment.export(temp_audio_file.name, format="wav", codec="pcm_s16le")
  
             # Transcribe the audio
             transcription = self.transcribe_audio_file(temp_audio_file.name)
@@ -102,7 +103,8 @@ class InterviewAssistant:
                 self.questions.append(transcription)
                 threading.Thread(target=self.generate_answer, args=(transcription,)).start()
         except Exception as e:
-            print(f"Transcription error: {e}")
+            print(f"Error during transcription or audio processing: {e}")
+            return None
         finally:
             try:
                 temp_audio_file.close()
@@ -111,29 +113,29 @@ class InterviewAssistant:
                 print(f"Error cleaning up temporary file: {cleanup_error}")
 
 
-    def preprocess_audio(audio_data):
+    def preprocess_audio(self, audio_data):
         audio_segment = AudioSegment(
             data=audio_data,
-            sample_width=pyaudio.get_sample_size(FORMAT),
+            sample_width=self.audio.get_sample_size(FORMAT),
             frame_rate=RATE,
             channels=CHANNELS
         )
         normalized_audio = effects.normalize(audio_segment)
-        # Additional processing like noise reduction can be applied here
-        return normalized_audio.raw_data
-    
+        mono_audio = normalized_audio.set_channels(1)  # Convert to mono
+        return mono_audio.raw_data
+
 
     def capture_audio(self, stream):
-        """Capture audio frames and return the combined audio data."""
+        """Capture audio frames, preprocess, and return the combined audio data."""
         try:
             frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
-            return b''.join(frames)
-            processed_audio = preprocess_audio(raw_audio)
+            raw_audio = b''.join(frames)
+            processed_audio = self.preprocess_audio(raw_audio)
             return processed_audio
         except OSError as e:
             print(f"Audio input overflowed: {e}")
             return None
- 
+
 
     def is_silent(self, audio_data, threshold=None):
         """Check if the audio data is silent based on amplitude and threshold."""
@@ -146,14 +148,27 @@ class InterviewAssistant:
 
 
     def transcribe_audio_file(self, audio_file_path):
-        """Transcribes an audio file using AssemblyAI's file-based API."""
+        """Transcribe an audio file using Google Speech-to-Text."""
         try:
-            transcriber = Transcriber()
-            transcript = transcriber.transcribe(audio_file_path)
-            print("Full Transcript:", transcript.text)
-            return transcript.text
+            with io.open(audio_file_path, "rb") as audio_file:
+                content = audio_file.read()
+
+            audio = speech.RecognitionAudio(content=content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=RATE,
+                language_code="en-US",
+            )
+
+            response = self.speech_client.recognize(config=config, audio=audio)
+
+            # Extract transcription
+            transcript = " ".join([result.alternatives[0].transcript for result in response.results])
+            print("Transcript:", transcript)
+            return transcript
+
         except Exception as e:
-            print(f"Transcription error: {e}")
+            print(f"Google Speech-to-Text error: {e}")
             return f"Error: {e}"
 
 
