@@ -1,5 +1,4 @@
 import os
-import wave
 import openai
 import pyaudio
 import platform
@@ -9,6 +8,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk
 import assemblyai as aai
+from pydub import AudioSegment, effects
 from assemblyai import Transcriber
 from config import config
 from ui import InterviewAssistantUI
@@ -85,20 +85,21 @@ class InterviewAssistant:
 
 
     def save_and_transcribe(self, audio_data):
-        """Save audio data to a temporary file and transcribe it."""
-        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".wav")
+        """Save audio data to MP3 file and transcribe it."""
+        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".mp3")
         try:
-            with wave.open(temp_audio_file.name, 'wb') as wf:
-                wf.setnchannels(CHANNELS)
-                wf.setsampwidth(self.audio.get_sample_size(FORMAT))
-                wf.setframerate(RATE)
-                wf.writeframes(audio_data)
+            audio_segment = AudioSegment(
+                data=audio_data,
+                sample_width=self.audio.get_sample_size(FORMAT),
+                frame_rate=RATE,
+                channels=CHANNELS
+            )
+            audio_segment.export(temp_audio_file.name, format="mp3")
  
             # Transcribe the audio
             transcription = self.transcribe_audio_file(temp_audio_file.name)
             if transcription:
                 self.questions.append(transcription)
-                # Generate an answer for the question
                 threading.Thread(target=self.generate_answer, args=(transcription,)).start()
         except Exception as e:
             print(f"Transcription error: {e}")
@@ -110,11 +111,25 @@ class InterviewAssistant:
                 print(f"Error cleaning up temporary file: {cleanup_error}")
 
 
+    def preprocess_audio(audio_data):
+        audio_segment = AudioSegment(
+            data=audio_data,
+            sample_width=pyaudio.get_sample_size(FORMAT),
+            frame_rate=RATE,
+            channels=CHANNELS
+        )
+        normalized_audio = effects.normalize(audio_segment)
+        # Additional processing like noise reduction can be applied here
+        return normalized_audio.raw_data
+    
+
     def capture_audio(self, stream):
         """Capture audio frames and return the combined audio data."""
         try:
             frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
             return b''.join(frames)
+            processed_audio = preprocess_audio(raw_audio)
+            return processed_audio
         except OSError as e:
             print(f"Audio input overflowed: {e}")
             return None
