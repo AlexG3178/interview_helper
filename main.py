@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import openai
 import pyaudio
 import platform
@@ -26,7 +27,7 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
 class InterviewAssistant:
-    MIN_SILENCE_THRESHOLD = config['MIN_SILENCE_THRESHOLD']
+    SILENCE_THRESHOLD = config['SILENCE_THRESHOLD']
  
     def __init__(self):
         self.questions = []
@@ -36,29 +37,9 @@ class InterviewAssistant:
         self.root = tk.Tk()
         self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
         self.transcribing = False
-        self.calibrate_silence_threshold()
          # Google Cloud Speech client setup
         self.speech_client = speech.SpeechClient.from_service_account_json(config['google_service_account_key'])
         self.root.mainloop()
-        
-        
-    def calibrate_silence_threshold(self):
-        print("Calibrating silence threshold...")
-        stream = self.audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            frames_per_buffer=CHUNK
-        )
-        noise_samples = [
-            np.sqrt(np.mean(np.frombuffer(stream.read(CHUNK), dtype=np.int16) ** 2))
-            for _ in range(10)
-        ]
-        stream.stop_stream()
-        stream.close()
-        self.SILENCE_THRESHOLD = max(np.mean(noise_samples) * 1.5, config['MIN_SILENCE_THRESHOLD'])
-        print(f"Silence threshold set to: {self.SILENCE_THRESHOLD}")
 
 
     def start_recording(self, start=True):
@@ -89,20 +70,24 @@ class InterviewAssistant:
         )
 
         audio_buffer = b""  # Accumulate audio data here
+        silence_start_time = None  # Track when silence starts
 
         try:
             while self.transcribing:
                 audio_data = self.capture_audio(stream)
                 if audio_data:
                     if not self.is_silent(audio_data, self.SILENCE_THRESHOLD):
-                        # Add audio data to buffer
+                        silence_start_time = None
                         audio_buffer += audio_data
                     else:
-                        # If silence detected and buffer has audio, process it
-                        if len(audio_buffer) > 0:
-                            print("Pause detected, processing audio segment...")
-                            self.save_and_transcribe(audio_buffer)
-                            audio_buffer = b""  # Reset the buffer
+                        if silence_start_time is None:
+                            silence_start_time = time.time()
+                        elif time.time() - silence_start_time >= config['SILENCE_PAUSE_DURATION']:
+                            if len(audio_buffer) > 0:
+                                print("Pause detected, processing audio segment...")
+                                self.save_and_transcribe(audio_buffer)
+                                audio_buffer = b""  # Reset the buffer
+                                silence_start_time = None
                 else:
                     print("No audio data captured.")
         finally:
@@ -138,25 +123,12 @@ class InterviewAssistant:
                 print(f"Error cleaning up temporary file: {cleanup_error}")
 
 
-    def preprocess_audio(self, audio_data):
-        audio_segment = AudioSegment(
-            data=audio_data,
-            sample_width=self.audio.get_sample_size(FORMAT),
-            frame_rate=RATE,
-            channels=CHANNELS
-        )
-        normalized_audio = effects.normalize(audio_segment)
-        mono_audio = normalized_audio.set_channels(1)  # Convert to mono
-        return mono_audio.raw_data
-
-
     def capture_audio(self, stream):
         """Capture audio frames, preprocess, and return the combined audio data."""
         try:
             frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
             raw_audio = b''.join(frames)
-            processed_audio = self.preprocess_audio(raw_audio)
-            return processed_audio
+            return raw_audio
         except OSError as e:
             print(f"Audio input overflowed: {e}")
             return None
@@ -167,10 +139,10 @@ class InterviewAssistant:
         if audio_data:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
             rms = np.sqrt(np.mean(amplitude ** 2))
-            print(f"RMS Value: {rms}, Threshold: {threshold}")
+            print(f"RMS: {rms}, Threshold: {threshold}")
             return rms < (threshold or self.SILENCE_THRESHOLD)
         return True
-
+    
 
     def transcribe_audio_file(self, audio_file_path):
         """Transcribe an audio file using Google Speech-to-Text."""
