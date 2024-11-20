@@ -26,7 +26,7 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 
 class InterviewAssistant:
-    SILENCE_THRESHOLD = config['SILENCE_THRESHOLD']
+    MIN_SILENCE_THRESHOLD = config['MIN_SILENCE_THRESHOLD']
  
     def __init__(self):
         self.questions = []
@@ -36,12 +36,31 @@ class InterviewAssistant:
         self.root = tk.Tk()
         self.ui = InterviewAssistantUI(self.root, self.on_question_select, self.start_recording)
         self.transcribing = False
-        self.recording_mode = "system_audio"
+        self.calibrate_silence_threshold()
          # Google Cloud Speech client setup
         self.speech_client = speech.SpeechClient.from_service_account_json(config['google_service_account_key'])
         self.root.mainloop()
- 
- 
+        
+        
+    def calibrate_silence_threshold(self):
+        print("Calibrating silence threshold...")
+        stream = self.audio.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK
+        )
+        noise_samples = [
+            np.sqrt(np.mean(np.frombuffer(stream.read(CHUNK), dtype=np.int16) ** 2))
+            for _ in range(10)
+        ]
+        stream.stop_stream()
+        stream.close()
+        self.SILENCE_THRESHOLD = max(np.mean(noise_samples) * 1.5, config['MIN_SILENCE_THRESHOLD'])
+        print(f"Silence threshold set to: {self.SILENCE_THRESHOLD}")
+
+
     def start_recording(self, start=True):
         if start:
             print("Start logging")
@@ -59,7 +78,7 @@ class InterviewAssistant:
  
     def transcribe_meeting(self):
         self.transcribing = True
- 
+
         stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
@@ -68,43 +87,49 @@ class InterviewAssistant:
             input_device_index=self.get_device_index(),
             frames_per_buffer=CHUNK
         )
- 
-        while self.transcribing:
-            audio_data = self.capture_audio(stream)
-            if audio_data:
-                if not self.is_silent(audio_data, self.SILENCE_THRESHOLD):
-                    self.save_and_transcribe(audio_data)
+
+        audio_buffer = b""  # Accumulate audio data here
+
+        try:
+            while self.transcribing:
+                audio_data = self.capture_audio(stream)
+                if audio_data:
+                    if not self.is_silent(audio_data, self.SILENCE_THRESHOLD):
+                        # Add audio data to buffer
+                        audio_buffer += audio_data
+                    else:
+                        # If silence detected and buffer has audio, process it
+                        if len(audio_buffer) > 0:
+                            print("Pause detected, processing audio segment...")
+                            self.save_and_transcribe(audio_buffer)
+                            audio_buffer = b""  # Reset the buffer
                 else:
-                    print("Silence detected in meeting audio, skipping transcription.")
-            else:
-                print("No audio data captured.")
- 
- 
-        stream.stop_stream()
-        stream.close()
-        print("Meeting transcription stopped.")
+                    print("No audio data captured.")
+        finally:
+            stream.stop_stream()
+            stream.close()
+            print("Meeting transcription stopped.")
 
 
-    def save_and_transcribe(self, audio_data):
-        """Save audio data to MP3 file and transcribe it."""
-        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".mp3")
+    def save_and_transcribe(self, audio_buffer):
+        """Save the accumulated audio buffer to a file and transcribe it."""
+        temp_audio_file = tempfile.NamedTemporaryFile(dir=CUSTOM_TEMP_DIR, delete=False, suffix=".wav")
         try:
             audio_segment = AudioSegment(
-                data=audio_data,
+                data=audio_buffer,
                 sample_width=self.audio.get_sample_size(FORMAT),
                 frame_rate=RATE,
                 channels=CHANNELS
             )
             audio_segment.export(temp_audio_file.name, format="wav", codec="pcm_s16le")
- 
-            # Transcribe the audio
+            
+            # Transcribe the saved audio file
             transcription = self.transcribe_audio_file(temp_audio_file.name)
             if transcription:
                 self.questions.append(transcription)
                 threading.Thread(target=self.generate_answer, args=(transcription,)).start()
         except Exception as e:
-            print(f"Error during transcription or audio processing: {e}")
-            return None
+            print(f"Error processing audio buffer: {e}")
         finally:
             try:
                 temp_audio_file.close()
@@ -141,9 +166,9 @@ class InterviewAssistant:
         """Check if the audio data is silent based on amplitude and threshold."""
         if audio_data:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
-            rms = np.sqrt(np.mean(amplitude**2))
+            rms = np.sqrt(np.mean(amplitude ** 2))
             print(f"RMS Value: {rms}, Threshold: {threshold}")
-            return rms < threshold
+            return rms < (threshold or self.SILENCE_THRESHOLD)
         return True
 
 
