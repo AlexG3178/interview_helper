@@ -70,6 +70,12 @@ class InterviewAssistantUI:
             start_index = self.question_text.tag_ranges("highlight")[0]  # Get the start of the highlight tag
             self.answer_text.see(start_index)  # Scroll to match the question's index
 
+        # Ensure full visibility of the last answer if the last question is selected
+        if self.question_text.tag_ranges("highlight"):
+            selected_index = int(self.question_text.index("highlight.first").split(".")[0]) // 2
+            if selected_index == len(self.answer_text.get("1.0", tk.END).splitlines()) - 2:
+                self.answer_text.yview_moveto(1.0)
+
  
     def scroll_to_end(self):
         """Scroll both the question list and answer text to the end."""
@@ -153,6 +159,10 @@ class InterviewAssistantUI:
                 self.answer_text.tag_add("highlight", answer_start, answer_end)
                 self.answer_text.tag_configure("highlight", background="yellow", foreground="black")
                 self.answer_text.see(answer_start)
+
+                # Ensure full visibility of the last answer when the last question is selected
+                if selected_index == len(answers) - 1:
+                    self.answer_text.yview_moveto(1.0)  # Scroll to the bottom
 
         # Disable editing again
         self.answer_text.config(state=tk.DISABLED)

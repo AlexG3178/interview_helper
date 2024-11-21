@@ -110,9 +110,11 @@ class InterviewAssistant:
             
             # Transcribe the saved audio file
             transcription = self.transcribe_audio_file(temp_audio_file.name)
-            if transcription:
+            if transcription and transcription.strip():  # Ensure the transcript is not empty
                 self.questions.append(transcription)
                 threading.Thread(target=self.generate_answer, args=(transcription,)).start()
+            else:
+                print("Empty transcription, skipping...")
         except Exception as e:
             print(f"Error processing audio buffer: {e}")
         finally:
