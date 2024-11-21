@@ -202,43 +202,35 @@ class InterviewAssistant:
 
     def populate_questions_and_answers(self):
         """Update the UI to display all questions and answers."""
-        self.ui.question_listbox.delete(0, tk.END)
+        self.ui.question_text.config(state=tk.NORMAL)
+        self.ui.answer_text.config(state=tk.NORMAL)
+        self.ui.question_text.delete(1.0, tk.END)
         self.ui.answer_text.delete(1.0, tk.END)
 
-        # Populate questions in the listbox
-        for question in self.questions:
-            self.ui.question_listbox.insert(tk.END, question)
+        # Populate questions in the text widget
+        for i, question in enumerate(self.questions):
+            tag = f"question_{i}"
+            start = self.ui.question_text.index(tk.END)
+            self.ui.question_text.insert(tk.END, f"{question}\n\n", tag)
+            end = self.ui.question_text.index(tk.END)
+            self.ui.question_text.tag_add(tag, start, end)
+            self.ui.question_text.tag_bind(tag, "<Button-1>", lambda event, index=i: self.on_question_select(index))
 
         # Populate answers in the text widget
         for answer in self.answers:
             self.ui.answer_text.insert(tk.END, f"{answer}\n\n")
 
-        # Detect if the last question is currently selected
-        is_last_selected = (
-            self.selected_index is not None
-            and self.selected_index == len(self.questions) - 2  # Check the second-to-last before appending
-        )
+        self.ui.question_text.config(state=tk.DISABLED)
+        self.ui.answer_text.config(state=tk.DISABLED)
 
-        # Handle selection logic
-        if is_last_selected:
-            # Move selection to the new last question
-            self.selected_index = len(self.questions) - 1
-        elif self.selected_index is None:
-            # Default to selecting the last question if no selection exists
-            self.selected_index = len(self.questions) - 1
-
-        # Apply the selection to the UI
-        self.ui.question_listbox.selection_clear(0, tk.END)
-        self.ui.question_listbox.selection_set(self.selected_index)
-        self.ui.question_listbox.activate(self.selected_index)
+        # Highlight the last question and answer by default
+        self.selected_index = len(self.questions) - 1 if self.questions else None
         self.ui.highlight_answer(self.selected_index, self.answers)
 
-        # Scroll behavior
-        if is_last_selected:
+        # Scroll to the end only if the last question is selected
+        if self.selected_index == len(self.questions) - 1:
             self.ui.scroll_to_end()
-        else:
-            self.ui.scroll_to_question(self.selected_index)
-            
+
 
     def get_device_index(self, device_name_windows="CABLE Output", device_name_mac="BlackHole"):
         target_device_name = device_name_windows if platform.system() == "Windows" else device_name_mac
@@ -250,12 +242,11 @@ class InterviewAssistant:
         raise ValueError(f"Device '{target_device_name}' not found")
 
  
-    def on_question_select(self, event):
+    def on_question_select(self, index):
         """Handle selection of a question from the UI."""
-        selected_question_index = self.ui.question_listbox.curselection()
-        if selected_question_index:
-            self.selected_index = selected_question_index[0]
-            self.ui.highlight_answer(self.selected_index, self.answers)
+        self.selected_index = index
+        self.ui.highlight_answer(self.selected_index, self.answers)
+
 
 
 def main():

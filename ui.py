@@ -20,36 +20,35 @@ class InterviewAssistantUI:
         top_frame = tk.Frame(self.root)
         top_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        # Create a custom style for the entry widget
-        style = ttk.Style()
-        style.configure(
-            "Custom.TEntry",
-            foreground="grey",
-            fieldbackground="#1D1E1E",
-            insertcolor="grey",         # Cursor color
-            insertbackground="green"
-        )  
-
         self.create_record_button(top_frame)
- 
+        
         # Paned window layout
         paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         paned_window.pack(fill=tk.BOTH, expand=True)
- 
+        
         # Left frame for questions
         left_frame = tk.Frame(paned_window, width=300)
         right_frame = tk.Frame(paned_window)
- 
+        
         # Add frames to paned window
         paned_window.add(left_frame)
         paned_window.add(right_frame)
         paned_window.paneconfig(left_frame, minsize=300)
- 
-        # Question listbox
-        self.question_listbox = tk.Listbox(left_frame)
-        self.question_listbox.pack(fill=tk.BOTH, expand=True)
-        self.question_listbox.bind("<<ListboxSelect>>", self.on_question_select)
- 
+        
+        # Question text widget
+        self.question_text = tk.Text(
+            left_frame,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            bg="#1D1E1E",
+            fg="white",
+            insertbackground="white",
+            borderwidth=0,
+            highlightthickness=0
+        )
+        self.question_text.pack(fill=tk.BOTH, expand=True)
+        self.question_text.bind("<Button-1>", self.on_question_click)
+
         # Answer display (right frame)
         self.answer_text = tk.Text(
             right_frame, 
@@ -67,20 +66,20 @@ class InterviewAssistantUI:
     
     def ensure_answer_visibility(self):
         """Ensure the highlighted answer remains visible during window resizing."""
-        if self.question_listbox.curselection():
-            selected_index = self.question_listbox.curselection()[0]
-            self.answer_text.see(f"{selected_index * 2 + 1}.0")  # Adjust to match line spacing
- 
+        if self.question_text.tag_ranges("highlight"):
+            start_index = self.question_text.tag_ranges("highlight")[0]  # Get the start of the highlight tag
+            self.answer_text.see(start_index)  # Scroll to match the question's index
+
  
     def scroll_to_end(self):
         """Scroll both the question list and answer text to the end."""
-        self.question_listbox.yview_moveto(1.0)
+        self.question_text.yview_moveto(1.0)
         self.answer_text.yview_moveto(1.0)
 
 
     def scroll_to_question(self, index):
         """Scroll to the specific question in the list."""
-        self.question_listbox.see(index)
+        self.question_text.see(index)
 
 
     def toggle_recording(self):
@@ -94,55 +93,80 @@ class InterviewAssistantUI:
             self.start_recording(False)
 
         self.root.after(100, self.scroll_to_end)
+
+
+    def on_question_click(self, event, index=None):
+        """Handle the selection of a question in the text widget."""
+        if index is not None:
+            self.start_recording(False)  # Stop recording when a question is selected
+            self.on_question_select(index)
+
+
  
- 
-    def populate_questions_and_answers(self, questions, answers):
-        self.question_listbox.delete(0, tk.END)
+    def update_questions_and_answers(self, questions, answers):
+        """Update the UI to display all questions and answers."""
+        self.question_text.config(state=tk.NORMAL)
+        self.answer_text.config(state=tk.NORMAL)
+        self.question_text.delete(1.0, tk.END)
         self.answer_text.delete(1.0, tk.END)
- 
-        for question in questions:
-            self.question_listbox.insert(tk.END, question)
- 
+
+        # Populate questions in the text widget
+        for i, question in enumerate(questions):
+            tag = f"question_{i}"
+            start = self.question_text.index(tk.END)
+            self.question_text.insert(tk.END, f"{question}\n\n", tag)
+            end = self.question_text.index(tk.END)
+            self.question_text.tag_add(tag, start, end)
+            self.question_text.tag_bind(tag, "<Button-1>", lambda event, index=i: self.on_question_click(event, index))
+
+        # Populate answers in the text widget
         for answer in answers:
             self.answer_text.insert(tk.END, f"{answer}\n\n")
- 
+
+        self.question_text.config(state=tk.DISABLED)
+        self.answer_text.config(state=tk.DISABLED)
+
  
     def highlight_answer(self, selected_index, answers):
-        """Highlight the selected answer in the text widget and ensure full visibility."""
-        self.answer_text.config(state=tk.NORMAL)  # Temporarily enable editing for updates
-        self.answer_text.delete(1.0, tk.END)
-    
-        # Insert all answers and highlight the selected one
-        for i, answer in enumerate(answers):
-            tag = "highlight" if i == selected_index else None
-            self.answer_text.insert(tk.END, f"{answer}\n\n", tag if tag else "normal")
-    
-        # Configure the highlight tag for styling
-        self.answer_text.tag_configure("highlight", background="yellow", foreground="black")
-        self.answer_text.config(state=tk.DISABLED)  # Disable editing again
-    
-        # Ensure the highlighted answer is fully visible
+        """Highlight the selected answer and corresponding question."""
+        # Enable editing temporarily
+        self.answer_text.config(state=tk.NORMAL)
+        self.question_text.config(state=tk.NORMAL)
+
+        # Clear previous highlights
+        self.answer_text.tag_remove("highlight", "1.0", tk.END)
+        self.question_text.tag_remove("highlight", "1.0", tk.END)
+
+        # Highlight the selected question
         if selected_index is not None:
-            # Calculate start and end lines for the selected answer
-            start_line = selected_index * 2 + 1
-            end_line = start_line + 1  # Include the blank line after the answer
-    
-            # Scroll to ensure both start and end lines are visible
-            self.answer_text.see(f"{start_line}.0")
-            self.answer_text.see(f"{end_line}.0")
-    
-            # Scroll slightly more to ensure padding space for visibility
-            self.answer_text.yview_scroll(-1, "units")  # Scroll up by 1 unit for better visibility
+            question_start = f"{selected_index * 2 + 1}.0"
+            question_end = f"{selected_index * 2 + 2}.0"
+            self.question_text.tag_add("highlight", question_start, question_end)
+            self.question_text.tag_configure("highlight", background="yellow", foreground="black")
+            self.question_text.see(question_start)
+
+        # Highlight the selected answer
+        for i, answer in enumerate(answers):
+            answer_start = f"{i * 2 + 1}.0"
+            answer_end = f"{i * 2 + 2}.0"
+            if i == selected_index:
+                self.answer_text.tag_add("highlight", answer_start, answer_end)
+                self.answer_text.tag_configure("highlight", background="yellow", foreground="black")
+                self.answer_text.see(answer_start)
+
+        # Disable editing again
+        self.answer_text.config(state=tk.DISABLED)
+        self.question_text.config(state=tk.DISABLED)
 
     
     def scroll_to_highlight(self):
         if self.is_recording:
-            self.question_listbox.yview_moveto(1)
+            self.question_text.yview_moveto(1)
             self.answer_text.yview_moveto(1)
         else:
-            selected = self.question_listbox.curselection()
+            selected = self.question_text.curselection()
             if selected:
-                self.question_listbox.see(selected[0])
+                self.question_text.see(selected[0])
 
 
     def draw_record_button(self):
