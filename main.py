@@ -28,6 +28,8 @@ os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)  # Ensure the directory exists
 
 class InterviewAssistant:
     SILENCE_THRESHOLD = config['SILENCE_THRESHOLD']
+    CAPTURING_INTERVAL = config['CAPTURING_INTERVAL']
+    SILENCE_PAUSE_DURATION = config['SILENCE_PAUSE_DURATION']
  
     def __init__(self):
         self.questions = []
@@ -82,7 +84,7 @@ class InterviewAssistant:
                     else:
                         if silence_start_time is None:
                             silence_start_time = time.time()
-                        elif time.time() - silence_start_time >= config['SILENCE_PAUSE_DURATION']:
+                        elif time.time() - silence_start_time >= self.SILENCE_PAUSE_DURATION:
                             if len(audio_buffer) > 0:
                                 print("Pause detected, processing audio segment...")
                                 self.save_and_transcribe(audio_buffer)
@@ -128,7 +130,7 @@ class InterviewAssistant:
     def capture_audio(self, stream):
         """Capture audio frames, preprocess, and return the combined audio data."""
         try:
-            frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * 2))]
+            frames = [stream.read(CHUNK, exception_on_overflow=False) for _ in range(0, int(RATE / CHUNK * self.CAPTURING_INTERVAL))]
             raw_audio = b''.join(frames)
             return raw_audio
         except OSError as e:
@@ -138,13 +140,25 @@ class InterviewAssistant:
 
     def is_silent(self, audio_data, threshold=None):
         """Check if the audio data is silent based on amplitude and threshold."""
-        if audio_data:
+        if audio_data and len(audio_data) > 0:
             amplitude = np.frombuffer(audio_data, dtype=np.int16)
-            rms = np.sqrt(np.mean(amplitude ** 2))
+            if amplitude.size == 0:
+                print("No amplitude data detected.")
+                return True  # Treat as silent
+
+            # Compute RMS safely
+            mean_square = np.mean(amplitude ** 2)
+            if mean_square <= 0:  # Prevent invalid sqrt
+                print("Mean square is zero or negative, treating as silent.")
+                mean_square = 1
+
+            rms = np.sqrt(mean_square)
             print(f"RMS: {rms}, Threshold: {threshold}")
             return rms < (threshold or self.SILENCE_THRESHOLD)
-        return True
-    
+        else:
+            print("Invalid or empty audio data.")
+            return True  # Treat as silent
+
 
     def transcribe_audio_file(self, audio_file_path):
         """Transcribe an audio file using Google Speech-to-Text."""
