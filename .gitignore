@@ -1,6 +1,6 @@
 .venv/
 .vscode
-config
+config.py
 __pycache__
 test.py
 design.png
